@@ -1,0 +1,115 @@
+# ---------------------------------------------------------------------------
+# Candidate profile - built from Fred's resume (MS BME Georgia Tech '25,
+# BS Biochemical Eng UGA '23, medtech R&D intern, bioprocess + DOE/QMS).
+# Every pattern is a case-insensitive Python regex. Edit freely.
+# ---------------------------------------------------------------------------
+name = "Fred Lee"
+
+[titles]
+# Core roles his resume is a direct match for (+35)
+primary = [
+  '\b(r&d|r\s*&\s*d|research (and|&) development)\b.*\bengineer',
+  '\bproduct development engineer',
+  '\bdevelopment engineer',
+  '\b(design|quality|design quality|design assurance|process|manufacturing|validation|verification|test|sustaining|biomedical|bioprocess|process development|packaging|reliability|product|mechanical|materials|biomaterials|tissue)\s+engineer',
+  '\b(associate|junior|entry[- ]level)\s+(\w+\s+){0,3}engineer',
+  '\bengineer\s*(i|1)\b',
+  '\bquality engineer',
+  '\bcapa\b.*engineer|\bcomplaint.*engineer|\bnpi engineer|\bmsat engineer|\bms&t\b.*engineer',
+  '\bprocess development\b.*(associate|engineer|scientist)',
+  '\bupstream\b|\bdownstream\b.*(associate|engineer|scientist)',
+]
+# Adjacent roles worth seeing (+20)
+secondary = [
+  '\bsystems engineer', '\bsupplier quality', '\bapplications engineer', '\bclinical engineer',
+  '\bassociate scientist', '\bscientist\s*(i|1)\b', '\bresearch associate', '\bresearch engineer',
+  '\bregulatory affairs (specialist|associate)', '\bquality (specialist|associate|analyst)',
+  '\bvalidation (specialist|associate|analyst)', '\bmanufacturing (associate|specialist)',
+  '\bengineering (associate|specialist)', '\bfield clinical', '\bcommissioning.*(engineer|qualification)',
+  '\b(technical|tech transfer) (specialist|associate)', '\bengineer\b',
+]
+# Never show these
+exclude = [
+  '\b(senior|sr\.?|staff|principal|lead|leader|manager|mgr|director|head of|vp|vice president|chief|supervisor|fellow|architect|distinguished)\b',
+  '\b(intern|internship|co-?op|student|summer 20\d\d|postdoc|post-doctoral|phd)\b',
+  '\b(software|firmware|devops|frontend|front-end|backend|full[- ]stack|data engineer|ml engineer|machine learning|cloud|network|security|it |salesforce|sap )\b',
+  '\b(sales|account|marketing|recruit|hr |finance|accountant|attorney|counsel|nurse|physician|pharmacist)\b',
+  '\b(field (\w+ )?engineer|serviceability|environmental|facility|field services?|services? engineer|installation|technician|electrician|mechanic|operator|driver|clinical specialist|territory)\b',
+  '\b(iii|iv)\b|\b(3|4)\s*$',
+  '\b(electrical|electronics?|embedded|hardware|rf|antenna|civil|facilities|construction|hvac|optical|photonics|fpga|asic)\b',
+]
+entry_bonus = ['\b(associate|junior|entry[- ]level|new grad|graduate|early career|engineer\s*(i|1)|level\s*(i|1)|rotational|development program|ldp)\b']
+level_penalty = ['\b(ii|2)\b']
+
+[skills]
+# Matched against the job description; each hit is a resume keyword he can
+# honestly claim. +3 each, capped at +30.
+patterns = [
+  'solidworks', 'gd&t|geometric dimensioning', 'tolerance (stack|analysis)', '\bfea\b|finite element',
+  'ansys|abaqus|febio', 'iso\s*13485', '21 cfr (part )?820|\bqmsr\b|quality system regulation',
+  'iso\s*14971|risk management', '\bcapa\b|corrective and preventive', 'design history file|\bdhf\b',
+  'design controls?', 'verification (and|&) validation|\bv&v\b', '\bdoe\b|design of experiments',
+  'minitab', 'matlab', '\banova\b|regression|hypothesis test|statistical', 'root cause',
+  '\bsops?\b|standard operating procedure', '\beco\b|\becn\b|change control|engineering change',
+  '\bgmp\b|good manufacturing', 'prototyp', '3d print|additive manufacturing', 'injection mold',
+  'cnc|machining', 'test method', 'mechanical testing|tensile|compression|fatigue', '\bpfmea\b|\bdfmea\b|\bfmea\b',
+  'biocompatib|iso\s*10993', 'microfluidic', '\bhplc\b', 'bioreactor|fermentation', 'purification|chromatography',
+  'cell culture|aseptic', 'qpcr|pcr\b', '\beu mdr\b|medical device regulation', 'technical writing|protocols? and reports?',
+  'dfm\b|design for manufactur', 'laser cut', '\biq\b|\boq\b|\bpq\b|process validation', 'resin|casting|molding',
+]
+# Industry/domain words (+2.5 each, capped at +10)
+domain = [
+  'medical device', 'medtech', 'class (ii|iii)', '510\(k\)|\bpma\b|\bde novo\b', 'cardio|cardiac|vascular|structural heart',
+  'implant', 'catheter', 'orthopedic', 'biomaterial|tissue engineering|scaffold|regenerative', 'biologic|biopharm|bioprocess',
+  'combination product|drug delivery', 'fda',
+]
+
+[signals]
+# Phrases that mean new grads are genuinely welcome (+12)
+entry_level = [
+  'new grad', 'recent grad', 'entry[- ]level', 'early[- ]career', '0\s*(-|–|to)\s*[123]\s*years',
+  '''(master'?s|ms|m\.s\.)[^.]{0,60}(0|zero|no)\s*(\+\s*)?years''', '''(master'?s|ms|m\.s\.)[^.]{0,40}\bor\b[^.]{0,30}(0|zero)\s*years''',
+  'no (prior )?experience (is )?required', 'rotational program', 'leadership development program', 'graduating',
+]
+# Ghost/pipeline language (+35 ghost risk)
+evergreen = [
+  'talent (pipeline|pool|community)', 'future (opening|opportunit|need)', 'evergreen', 'pipeline (req|requisition|role|posting)',
+  'general (application|interest)', 'always accepting', 'expression of interest', 'not (currently )?(an )?active(ly)? (opening|hiring)',
+  'this (posting|requisition) (is|will be) used to', 'multiple openings? (throughout|over) the year', 'continuous(ly)? recruit',
+  'proactive(ly)? (sourc|recruit)', 'submit your (resume|interest) for (future|consideration)',
+]
+# Contract / temp / staffing. Title & employment-type patterns are broad;
+# description patterns must be specific (boilerplate mentions "contractors").
+contract_title = ['\bcontract(or)?\b', '\btemp(orary)?\b', '\bfixed[- ]term\b', '\bconsultant\b']
+contract = [
+  'w-?2 (hourly|contract)', '\b1099\b', '(contract|assignment) (duration|length):?\s*\d+', '\b\d+\+?[- ](month|year) (contract|assignment)',
+  'contract[- ]to[- ]hire', 'this is a (temporary|contract|temp)', '(temporary|contract) (position|role|assignment)',
+  '\b(actalent|aerotek|kelly services|kelly scientific|randstad|adecco|yoh|iconma|planet pharma|tek ?systems|insight global|kforce|apex systems|collabera|joule|pioneer data|net2source|mindlance|katalyst)\b',
+]
+# Hard requirements he can't meet. Edit if his situation differs!
+knockouts = [
+  { pattern = '(active|current|existing) (secret|top secret|ts/sci|dod) (security )?clearance', label = "security clearance required" },
+  { pattern = '\bph\.?d\.? (is )?required', label = "PhD required" },
+  { pattern = 'professional engineer(ing)? (\(pe\) )?licen[cs]e (is )?required|\bp\.?e\.? license required', label = "PE license required" },
+]
+
+[filters]
+# Search terms sent to Workday career sites (they're huge; this keeps runs fast).
+workday_queries = ["engineer", "associate scientist", "process development"]
+# Relocation is fine, but home-state jobs get a small bump.
+preferred_states = ["GA"]
+# Hide postings older than this (except to show them as likely ghosts).
+max_age_days = 45
+
+[scoring]
+max_years_ok = 2          # "MS + 2 yrs" or less is within reach
+min_salary = 65000        # annualized; below this gets flagged "low pay" (a $20/hr offer = ~$41.6k)
+contract_penalty = 10     # set 0 if contract roles are fine
+preferred_location_bonus = 5
+apply_now_score = 70
+worth_it_score = 45
+
+[scoring.segment_bonus]
+"large-medtech" = 4
+"medtech-growth" = 4
+"georgia-local" = 3

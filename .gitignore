@@ -1,0 +1,9 @@
+# personal data - never commit
+data/
+reports/
+*.pdf
+*.docx
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
