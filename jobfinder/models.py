@@ -22,6 +22,7 @@ class Company:
     site: str = ""
     segment: str = ""
     hq: str = ""
+    ticker: str = ""          # US stock ticker, used for SEC restructuring filings
 
     @property
     def key(self) -> str:

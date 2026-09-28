@@ -63,7 +63,10 @@ def fetch_greenhouse(c: Company, ctx: "FetchContext") -> list[Job]:
             req_id=str(j.get("requisition_id") or ""),
             department=", ".join(d.get("name", "") for d in j.get("departments") or []),
             segment=c.segment,
+            extra={"internal_job_id": j.get("internal_job_id"), "gh_prospect": j.get("internal_job_id") is None,
+                   "end_date": j.get("application_deadline") or ""},
         ))
+    ctx.totals[c.name] = len(out)
     return out
 
 
@@ -87,9 +90,11 @@ def fetch_lever(c: Company, ctx: "FetchContext") -> list[Job]:
             location=", ".join(cats.get("allLocations") or [cats.get("location") or ""]),
             url=j.get("hostedUrl", ""), description=desc, posted_at=parse_dt(j.get("createdAt")),
             remote=(j.get("workplaceType") or "").lower(), salary=salary,
-            department=cats.get("team") or "", employment_type=cats.get("commitment") or "",
+            department=" / ".join(filter(None, [cats.get("department"), cats.get("team")])),
+            employment_type=cats.get("commitment") or "",
             segment=c.segment, extra={"country": j.get("country", "")},
         ))
+    ctx.totals[c.name] = len(out)
     return out
 
 
@@ -109,8 +114,9 @@ def fetch_ashby(c: Company, ctx: "FetchContext") -> list[Job]:
             description=j.get("descriptionPlain") or html_to_text(j.get("descriptionHtml")),
             posted_at=parse_dt(j.get("publishedAt")), remote=(j.get("workplaceType") or "").lower(),
             salary=comp, department=j.get("department") or "", employment_type=j.get("employmentType") or "",
-            segment=c.segment,
+            segment=c.segment, extra={"end_date": j.get("applicationDeadline") or ""},
         ))
+    ctx.totals[c.name] = len(out)
     return out
 
 
@@ -131,9 +137,13 @@ def fetch_smartrecruiters(c: Company, ctx: "FetchContext") -> list[Job]:
                 remote="remote" if loc.get("remote") else ("hybrid" if loc.get("hybrid") else ""),
                 employment_type=(j.get("typeOfEmployment") or {}).get("label", ""),
                 department=(j.get("function") or {}).get("label", ""), segment=c.segment,
-                extra={"experience_level": (j.get("experienceLevel") or {}).get("id", "")},
+                extra={"experience_level": (j.get("experienceLevel") or {}).get("id", ""),
+                       "custom": {cf.get("fieldLabel", ""): cf.get("valueLabel", "")
+                                  for cf in j.get("customField") or []}},
             )
             out.append(job)
+        if offset == 0:
+            ctx.totals[c.name] = data.get("totalFound", 0)
         offset += len(items)
         if not items or offset >= data.get("totalFound", 0) or offset >= 2000:
             break
@@ -170,6 +180,7 @@ def fetch_workable(c: Company, ctx: "FetchContext") -> list[Job]:
             remote="remote" if j.get("telecommuting") else "", employment_type=j.get("employment_type") or "",
             department=j.get("department") or "", segment=c.segment,
         ))
+    ctx.totals[c.name] = len(out)
     return out
 
 
@@ -217,18 +228,24 @@ def fetch_workday(c: Company, ctx: "FetchContext") -> list[Job]:
                 "appliedFacets": {}, "limit": 20, "offset": offset, "searchText": query})
             if total is None:
                 total = data.get("total", 0)
+                ctx.totals[c.name] = max(ctx.totals.get(c.name, 0), total)
             posts = data.get("jobPostings") or []
             for p in posts:
                 path = p.get("externalPath") or ""
                 if not path or path in seen:
                     continue
+                req = (p.get("bulletFields") or [""])[0]
+                m = re.search(re.escape(req) + r"-(\d{1,2})$", path) if req else None
                 seen[path] = Job(
                     company=c.name, source="workday", ext_id=path.rsplit("_", 1)[-1] if "_" in path else path,
                     title=p.get("title", ""), location=p.get("locationsText", ""),
                     url=f"https://{c.host}/{c.site}{path}",
                     posted_at=_workday_posted(p.get("postedOn", "")),
-                    req_id=(p.get("bulletFields") or [""])[0], segment=c.segment,
-                    extra={"path": path, "posted_text": p.get("postedOn", "")},
+                    req_id=req, segment=c.segment,
+                    extra={"path": path, "posted_text": p.get("postedOn", ""),
+                           "wd_suffix": int(m.group(1)) if m else 0,
+                           # "Posted 30+ Days Ago" is censored; anything else is an exact age
+                           "age_exact": "+" not in p.get("postedOn", "")},
                 )
             offset += 20
             # results are newest-first: stop once we're past the age cutoff
@@ -293,6 +310,8 @@ def fetch_oracle(c: Company, ctx: "FetchContext") -> list[Job]:
                     remote=(r.get("WorkplaceType") or "").lower(), segment=c.segment,
                     extra={"country": r.get("PrimaryLocationCountry") or ""},
                 )
+            if offset == 0:
+                ctx.totals[c.name] = max(ctx.totals.get(c.name, 0), item.get("TotalJobsCount") or 0)
             offset += len(reqs)
             if not reqs or offset >= (item.get("TotalJobsCount") or 0) or offset >= 1000:
                 break
@@ -342,9 +361,11 @@ def fetch_phenom(c: Company, ctx: "FetchContext") -> list[Job]:
                     location=" / ".join(dict.fromkeys([loc] + multi)) if multi else loc,
                     url=f"https://{c.host}/{country}/{lang.split('_')[0]}/job/{quote(jid)}",
                     description=j.get("descriptionTeaser") or "", posted_at=parse_dt(j.get("postedDate")),
-                    req_id=j.get("reqId") or "", department=j.get("category") or "", segment=c.segment,
+                    req_id=str(j.get("reqId") or ""), department=j.get("category") or "", segment=c.segment,
                     extra={"country": j.get("country") or "", "created": j.get("dateCreated") or ""},
                 )
+            if start == 0:
+                ctx.totals[c.name] = max(ctx.totals.get(c.name, 0), rs.get("totalHits") or 0)
             start += len(items)
             if not items or start >= (rs.get("totalHits") or 0) or start >= 1000:
                 break
@@ -357,11 +378,16 @@ def fetch_phenom(c: Company, ctx: "FetchContext") -> list[Job]:
                 r = request_json(url, method="POST", payload={
                     "lang": lang, "deviceType": "desktop", "country": country, "pageName": "job",
                     "ddoKey": "jobDetail", "jobId": job.ext_id})
-                d = {"description": (((r.get("jobDetail") or {}).get("data") or {}).get("job") or {}).get("description")}
+                jd = ((r.get("jobDetail") or {}).get("data") or {})
+                jd = jd.get("job") or jd
+                d = {k: jd.get(k) for k in ("description", "isEverGreenReq", "jobRequisitionType", "justification",
+                                            "newPosition", "replacementName", "numberOpenings",
+                                            "noOfAvailableOpenings", "openingsFilled", "confidentialReq")}
             except Exception:
                 continue
             ctx.cache.put(job.uid, d)
         job.description = html_to_text(d.get("description")) or job.description
+        job.extra["phenom"] = {k: v for k, v in d.items() if k != "description" and v not in (None, "")}
     return list(jobs.values())
 
 
@@ -388,7 +414,10 @@ def fetch_eightfold(c: Company, ctx: "FetchContext") -> list[Job]:
                     req_id=str(j.get("displayJobId") or j.get("atsJobId") or ""),
                     remote=(j.get("workLocationOption") or "").lower(), department=j.get("department") or "",
                     segment=c.segment,
+                    extra={"created": parse_dt(j["creationTs"] * 1000).isoformat() if j.get("creationTs") else ""},
                 )
+            if start == 0:
+                ctx.totals[c.name] = max(ctx.totals.get(c.name, 0), d.get("count") or 0)
             start += len(pos)
             oldest = pos[-1].get("postedTs") if pos else None
             too_old = oldest and (_now() - datetime.fromtimestamp(oldest, tz=timezone.utc)).days > ctx.max_age_days
@@ -446,6 +475,7 @@ class FetchContext:
         self.workday_max_per_query = workday_max_per_query
         self.max_age_days = max_age_days
         self.cache = cache or DetailCache()
+        self.totals: dict[str, int] = {}   # company -> open postings the ATS reports (hiring-freeze tracking)
 
 
 def fetch_company(c: Company, ctx: FetchContext) -> list[Job]:

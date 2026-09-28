@@ -13,7 +13,9 @@ from .http import get_text
 from .models import Company, Job
 from .report import print_summary, write_csv, write_html
 from .scoring import days_old, score_job, title_matches
+from .sec import restructuring_days
 from .sources import DetailCache, FetchContext, detect_from_text, fetch_company, probe_slug
+from .staleness import build_contexts
 from .store import Store
 
 
@@ -70,18 +72,40 @@ def cmd_run(args) -> int:
 
     last = store.last_run()
     candidates = [j for j in jobs if title_matches(profile, j.title)]
+    # company-level context (req-number sequences, boilerplate, suffix norms) from ALL postings
+    contexts = build_contexts(jobs, now)
+    for j in candidates:
+        cc = contexts.get(j.company)
+        if cc is None:
+            continue
+        est = cc.req_age_estimate(j)
+        if est is not None:
+            j.extra["req_age_estimate"] = est
+        created = cc.created_at(j)
+        if created:
+            j.extra["req_age_created"] = (now - created).total_seconds() / 86400
     store.annotate(candidates, now)
     if last is None:  # first run: everything is "new", which is noise
         for j in candidates:
             j.is_new = False
+    ticker_of = {c.name: c.ticker for c in companies if c.ticker}
+    restructuring = restructuring_days(set(ticker_of.values()), profile.sec_contact, store.db)
+    frozen = store.freezes()
     for j in candidates:
-        score_job(j, profile, now)
+        if ticker_of.get(j.company) in restructuring:
+            j.extra["restructuring_days"] = restructuring[ticker_of[j.company]]
+        if j.company in frozen:
+            j.extra["freeze"] = True
+        score_job(j, profile, now, contexts.get(j.company))
     marks = store.marks()
     shown = [j for j in candidates if j.bucket != "filtered"
              and marks.get(j.uid) not in ("applied", "hidden")
              and not ((days_old(j, now) or 0) > profile.max_age_days and j.bucket != "likely ghost")]
     shown.sort(key=lambda j: (-j.is_new, -j.score) if args.new_first else (-j.score,))
-    store.save([j for j in candidates if j.bucket != "filtered"], now, len(companies), errors)
+    kept = [j for j in candidates if j.bucket != "filtered"]
+    store.record_reqs(kept, now)
+    store.record_counts(ctx.totals, errors, now)
+    store.save(kept, now, len(companies), errors)
 
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     stats = {"name": profile.name, "companies": len(companies), "fetched": fetched,

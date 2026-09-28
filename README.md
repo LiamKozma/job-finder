@@ -22,7 +22,7 @@ were never going to be filled. This tool does the opposite:
 
 | Problem | What the tool does |
 |---|---|
-| **Ghost jobs** (reposted roles, "talent pipeline" listings, reqs open for months) | Remembers every posting across daily runs. It catches **reposts** (same role and city, new ID; Workday's `-1/-2` re-opened reqs), **evergreen language**, **age > 35/60 days**, thin descriptions, and postings blasted to dozens of locations. It raises a `ghost_risk` score and sends these to the "Likely ghost" bin. |
+| **Ghost jobs** (pipeline postings, reposted old roles, "talent community" listings) | Catches postings that say, or whose ATS records, that there's no single open seat: pipeline titles, Greenhouse prospect posts, evergreen/pipeline requisition fields, NY/Ontario vacancy-disclosure wording. It spots **old requisitions re-posted with a fresh date**, estimated from each company's requisition-number sequence (0 false alarms against Boston Scientific's real creation dates), and tracks re-listings and hiring freezes across daily runs. Details and evidence: [docs/GHOST_JOBS.md](docs/GHOST_JOBS.md). |
 | **Instant auto-rejections** | These are usually knockout filters: years of experience, degree, clearance, location. The tool reads each description and pulls out **how many years they actually require for someone with an MS** (e.g. "BS + 2 yrs **or MS + 0 yrs**"). "5+ years" roles and clearance/PE/PhD requirements get pushed down. |
 | **Being applicant #800** | Jobs are pulled straight from the employer's own ATS, usually **hours** after posting. Postings from the last 24–72h get a big boost, because early applicants are far likelier to get a human review. |
 | **Lowball offers** (e.g. $20/hr on a 2-year contract ≈ $41.6k/yr) | Parses posted pay ranges and flags anything under your floor (`min_salary`, default $65k). Contract, temp and staffing-agency roles are flagged too. Most US states with big medtech hubs (CA, CO, WA, NY, IL, MN, MA, NJ, MD) legally require a pay range in the posting, so you'll see the pay *before* applying. |
@@ -95,11 +95,15 @@ Cloud, Phenom and Eightfold. Companies on iCIMS, Taleo, SuccessFactors or UKG ha
   explicit new-grad language (+12), posted pay (+5) or pay under your floor (−20), contract (−10),
   knockouts (−40), and a small bump for preferred locations/segments.
 - **freshness**: ≤1 day +25, ≤3 days +18, ≤7 days +10, >30 days −15.
-- **ghost_risk**: evergreen/pipeline language +35, reposted +15 each, open >60 days +20,
-  thin description +10, many locations +10, no pay range in a pay-transparency state +5.
+- **ghost_risk** (0–100): pipeline title +45, Greenhouse prospect post +40, evergreen text +35, ATS pipeline/evergreen
+  requisition +30, requisition 61–180+ days old +6 to +22, re-listed +10/+15, passed deadline +15, and smaller signals.
+  An old requisition with a fresh date also caps the freshness bonus. Full table: [docs/GHOST_JOBS.md](docs/GHOST_JOBS.md).
 
 Buckets: **apply now** (score ≥ 70 and ≤ 7 days old), **worth a shot** (≥ 45), **long shot**, and
 **likely ghost** (ghost_risk ≥ 40).
+
+**Optional:** set `contact_email` under `[sec]` in `config/profile.toml` to also flag employers that filed an
+SEC restructuring notice in the past year. SEC requires a contact email on API requests, so this is off by default.
 
 ## Privacy
 

@@ -5,14 +5,13 @@ The tool finds the right postings. This covers what to do with them.
 
 ## 1. What's actually going on
 
-- **Ghost jobs are real and common.** 18–22% of postings on Greenhouse look like ghost jobs
+- **Ghost jobs are real and common.** Greenhouse's internal data flags 18–22% of postings as likely ghost jobs
   ([Greenhouse 2024](https://www.greenhouse.com/blog/greenhouse-2024-state-of-job-hunting-report)).
-  About 1 in 3 US listings leads to no hire
-  ([MyPerfectResume via HR Dive](https://www.hrdive.com/news/us-job-listings-go-nowhere-creating-a-ghost-job-economy/805448/)).
   40% of hiring managers admit posting fake jobs
   ([ResumeBuilder](https://www.resumebuilder.com/3-in-10-companies-currently-have-fake-job-posting-listed/)).
-  Hires per posting fell from about 8 in 10 in 2020 to fewer than 4 in 10 in 2024
-  ([CRS](https://www.congress.gov/crs-product/IF12977)).
+  Revelio Labs measured hires per posting falling from about 0.75 (2018) to under 0.5 (2023).
+  A big share of postings also stay up after they are filled, which is why applying to *fresh* postings matters so much.
+  Economists find about 39% of applications go to ads under 48h old, and roughly 35% of hires come from vacancies ≤1 week old.
 - **The 1 AM rejection is a machine, not a person.** It comes from knockout questions (years of experience,
   sponsorship, relocation, degree) or from a batch job that sends rejections overnight. It also happens when a
   req closes or is filled internally, which rejects everyone still in the pile at once. Nobody read the resume.

@@ -29,6 +29,8 @@ class Profile:
     domain_keywords: list[str] = field(default_factory=list)
     entry_phrases: list[str] = field(default_factory=list)
     evergreen_phrases: list[str] = field(default_factory=list)
+    pipeline_title: list[str] = field(default_factory=list)
+    pipeline_title_ok: list[str] = field(default_factory=list)
     contract_phrases: list[str] = field(default_factory=list)
     contract_title: list[str] = field(default_factory=list)
     knockouts: list[tuple[str, str]] = field(default_factory=list)
@@ -42,6 +44,7 @@ class Profile:
     apply_now_score: float = 70
     worth_it_score: float = 45
     max_age_days: int = 45
+    sec_contact: str = ""
 
 
 def load_profile(path: Path | None = None) -> Profile:
@@ -59,6 +62,8 @@ def load_profile(path: Path | None = None) -> Profile:
         domain_keywords=raw.get("skills", {}).get("domain", []),
         entry_phrases=s.get("entry_level", []),
         evergreen_phrases=s.get("evergreen", []),
+        pipeline_title=s.get("pipeline_title", []),
+        pipeline_title_ok=s.get("pipeline_title_ok", []),
         contract_phrases=s.get("contract", []),
         contract_title=s.get("contract_title", []),
         knockouts=[(k["pattern"], k["label"]) for k in s.get("knockouts", [])],
@@ -72,10 +77,11 @@ def load_profile(path: Path | None = None) -> Profile:
         apply_now_score=sc.get("apply_now_score", 70),
         worth_it_score=sc.get("worth_it_score", 45),
         max_age_days=f.get("max_age_days", 45),
+        sec_contact=raw.get("sec", {}).get("contact_email", ""),
     )
 
 
-COMPANY_FIELDS = ["name", "ats", "slug", "host", "site", "segment", "hq"]
+COMPANY_FIELDS = ["name", "ats", "slug", "host", "site", "segment", "hq", "ticker"]
 
 
 def load_companies(path: Path | None = None) -> list[Company]:

@@ -71,12 +71,26 @@ entry_level = [
   '''(master'?s|ms|m\.s\.)[^.]{0,60}(0|zero|no)\s*(\+\s*)?years''', '''(master'?s|ms|m\.s\.)[^.]{0,40}\bor\b[^.]{0,30}(0|zero)\s*years''',
   'no (prior )?experience (is )?required', 'rotational program', 'leadership development program', 'graduating',
 ]
-# Ghost/pipeline language (+35 ghost risk)
+# Pipeline / talent-community postings, by TITLE (+45 ghost risk). Checked on 6,352 live
+# titles: ~90% precision. The _ok list removes technical uses of "pipeline".
+pipeline_title = [
+  'talent (community|pool|pipeline|network)', 'general (application|interest|opportunit)', 'future (opportunit|opening|consideration)',
+  '\(pipeline\)', '[-–]\s*pipeline\b', '\bpipeline (req|requisition|posting)', 'expression of interest', 'open application',
+  'evergreen', "don.?t see (a|the) (role|job|position)", 'engineering opportunities$',
+]
+pipeline_title_ok = ['(data|print|build|render|ml|drug|product|sales|clinical development|ci/cd|software) pipeline', 'pipeline (engineer|lead|manager|scientist|integrity|development)']
+# Job-specific evergreen language in the DESCRIPTION (+35; +10 for cohort programs).
+# Company boilerplate ("our drug pipeline", "talent pipeline" in EEO text) is removed first.
+# Bare "future needs" / "talent pipeline" were dropped: they hit real jobs (e.g. Regeneron's entry-level cohort).
 evergreen = [
-  'talent (pipeline|pool|community)', 'future (opening|opportunit|need)', 'evergreen', 'pipeline (req|requisition|role|posting)',
-  'general (application|interest)', 'always accepting', 'expression of interest', 'not (currently )?(an )?active(ly)? (opening|hiring)',
-  'this (posting|requisition) (is|will be) used to', 'multiple openings? (throughout|over) the year', 'continuous(ly)? recruit',
-  'proactive(ly)? (sourc|recruit)', 'submit your (resume|interest) for (future|consideration)',
+  '(this|the) (vacancy|posting|position|requisition|role) is not (currently )?(linked|tied|attached) to',
+  '(this|our) (evergreen|pipeline) (requisition|posting|req)', 'represents anticipated (openings|needs)',
+  'apply (to|through) (this|our) (general interest|talent (pipeline|community))', 'consider(ed)? you for future (openings|opportunities)',
+  'not (currently )?(an )?active(ly)? (opening|hiring|recruiting)', 'continuous(ly)? (recruit|accept)',
+  'pipeline requisition', 'intended to build a pipeline', 'build(ing)? a pipeline of (qualified )?candidates',
+  'collecting (interest|resumes|applications) for (potential )?future', 'there is no (current|immediate) opening',
+  'anticipat(ed|ing) future (openings|needs)', 'future (openings|opportunities) as they (arise|become available)',
+  'always (hiring|accepting applications)',
 ]
 # Contract / temp / staffing. Title & employment-type patterns are broad;
 # description patterns must be specific (boilerplate mentions "contractors").
@@ -113,3 +127,8 @@ worth_it_score = 45
 "large-medtech" = 4
 "medtech-growth" = 4
 "georgia-local" = 3
+
+[sec]
+# Optional: flags employers that filed an SEC restructuring notice (8-K Item 2.05) in the last year.
+# SEC's free API requires a contact email in each request. Leave blank to skip this check.
+contact_email = ""

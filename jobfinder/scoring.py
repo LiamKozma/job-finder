@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 
 from .config import Profile
 from .models import Job
+from .staleness import CompanyContext
 
 # ---------------------------------------------------------------- location
 US_STATES = {
@@ -37,7 +38,8 @@ _FOREIGN = re.compile(
     r"australia|sydney|melbourne|new zealand|taiwan|hong kong|south africa|dominican republic|puerto rico|"
     r"european union|emea|apac|latam)\b", re.I)
 # states with pay-transparency laws in effect (a range must appear in the posting)
-PAY_TRANSPARENCY = {"CA", "CO", "WA", "NY", "IL", "MN", "MD", "HI", "MA", "VT", "NJ", "DC", "ME", "VA"}
+# (VA/ME omitted: not confirmed as of Sep 2026)
+PAY_TRANSPARENCY = {"CA", "CO", "WA", "NY", "IL", "MN", "MD", "HI", "MA", "VT", "NJ", "DC"}
 
 
 def location_states(loc: str) -> set[str]:
@@ -63,6 +65,11 @@ def is_us(job: Job) -> bool | None:
     loc = job.location or ""
     if not loc.strip():
         return None
+    # "City, Region, CC" (Eightfold/Phenom style): trust the trailing ISO country code
+    codes = {m.group(1) for part in loc.split(" / ")
+             for m in [re.search(r",\s*[^,]+,\s*([A-Z]{2})\s*$", part.strip())] if m}
+    if codes:
+        return "US" in codes
     if _US.search(loc) or location_states(loc):
         return True
     if _FOREIGN.search(loc):
@@ -160,6 +167,39 @@ def parse_salary(text: str) -> tuple[float | None, float | None, str]:
     return best if best else (None, None, "")
 
 
+# ---------------------------------------------------------------- dates in text
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+_DATE_TXT = r"([a-z]{3,9}\.? \d{1,2},? \d{4}|\d{1,2} [a-z]{3,9}\.? \d{4}|\d{1,2}/\d{1,2}/\d{2,4}|\d{4}-\d{2}-\d{2})"
+_DEADLINE = re.compile(r"(application window[^.]{0,60}close[sd]? on|apply by|application deadline|applications? (will be )?"
+                       r"accepted (until|through)|posting (will )?close[sd]? on|closing date|posting end date)\W{0,6}" + _DATE_TXT)
+
+
+def parse_date_text(s: str) -> datetime | None:
+    s = (s or "").strip().lower().replace(",", "").replace(".", "")
+    if not s:
+        return None
+    try:
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}.*", s):
+            return datetime.fromisoformat(s[:10]).replace(tzinfo=timezone.utc)
+        m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{2,4})", s)
+        if m:
+            y = int(m.group(3)); y += 2000 if y < 100 else 0
+            return datetime(y, int(m.group(1)), int(m.group(2)), tzinfo=timezone.utc)
+        m = re.fullmatch(r"([a-z]+) (\d{1,2}) (\d{4})", s) or re.fullmatch(r"(\d{1,2}) ([a-z]+) (\d{4})", s)
+        if m:
+            a, b, y = m.groups()
+            mon, day = (a, b) if a.isalpha() else (b, a)
+            return datetime(int(y), _MONTHS[mon[:3]], int(day), tzinfo=timezone.utc)
+    except (ValueError, KeyError):
+        return None
+    return None
+
+
+def deadline_in_text(low: str) -> datetime | None:
+    m = _DEADLINE.search(low)
+    return parse_date_text(m.group(m.lastindex)) if m else None
+
+
 # ---------------------------------------------------------------- helpers
 @lru_cache(maxsize=4096)
 def _rx(pattern: str) -> re.Pattern:
@@ -189,7 +229,7 @@ def title_matches(profile: Profile, title: str) -> bool:
     return bool(_any(profile.title_primary, t) or _any(profile.title_secondary, t))
 
 
-def score_job(job: Job, p: Profile, now: datetime | None = None) -> Job:
+def score_job(job: Job, p: Profile, now: datetime | None = None, ctx: "CompanyContext | None" = None) -> Job:
     now = now or datetime.now(timezone.utc)
     title = job.title.lower()
     text = f"{job.title}\n{job.description}"
@@ -267,6 +307,11 @@ def score_job(job: Job, p: Profile, now: datetime | None = None) -> Job:
         job.bucket, job.score = "filtered", -100
         job.reasons = ["outside the US"]
         return job
+    if any(k.lower() == "posting type" and str(v).lower().startswith("internal only")
+           for k, v in (job.extra.get("custom") or {}).items()):
+        job.bucket, job.score = "filtered", -100
+        job.reasons = ["internal-only posting (not open to outside applicants)"]
+        return job
     states = location_states(job.location)
     if states & set(p.preferred_states):
         fit += p.preferred_bonus
@@ -281,49 +326,134 @@ def score_job(job: Job, p: Profile, now: datetime | None = None) -> Job:
             flags.append(label)
             reasons.append(f"-40 knockout: {label}")
 
-    # --- freshness: the biggest single lever against auto-rejection
-    age = days_old(job, now)
-    fresh = 0.0
-    if age is None:
-        reasons.append("posting date unknown")
-    elif age <= 1:
-        fresh = 25; reasons.append("+25 posted in the last 24h - apply today")
-    elif age <= 3:
-        fresh = 18; reasons.append(f"+18 posted {age:.0f} days ago")
-    elif age <= 7:
-        fresh = 10; reasons.append(f"+10 posted {age:.0f} days ago")
-    elif age <= 14:
-        fresh = 3
-    elif age <= 30:
-        fresh = -5; reasons.append(f"-5 posted {age:.0f} days ago")
-    else:
-        fresh = -15; reasons.append(f"-15 posted {age:.0f} days ago - applicant pile is deep")
+    # --- age. A posting's date can be reset by a repost; the requisition's age can't.
+    post_age = days_old(job, now)
+    req_age, req_src = post_age, ""
+    for cand, src in ((job.extra.get("req_age_history"), "first seen in your history"),
+                      (job.extra.get("req_age_created"), "ATS creation date"),
+                      (job.extra.get("req_age_estimate"), "estimated from its requisition number")):
+        if cand is not None and (req_age is None or cand > req_age):
+            req_age, req_src = cand, src
+    job.extra["req_age"] = req_age
+    refreshed = (post_age is not None and req_age is not None and req_age >= 60 and req_age - post_age >= 30)
 
-    # --- ghost-job risk
+    # --- freshness: the biggest single lever against auto-rejection
+    fresh = 0.0
+    if post_age is None:
+        reasons.append("posting date unknown")
+    elif post_age <= 1:
+        fresh = 25; reasons.append("+25 posted in the last 24h - apply today")
+    elif post_age <= 3:
+        fresh = 18; reasons.append(f"+18 posted {post_age:.0f} days ago")
+    elif post_age <= 7:
+        fresh = 10; reasons.append(f"+10 posted {post_age:.0f} days ago")
+    elif post_age <= 14:
+        fresh = 3
+    elif post_age <= 30:
+        fresh = -5; reasons.append(f"-5 posted {post_age:.0f} days ago")
+    else:
+        fresh = -15; reasons.append(f"-15 posted {post_age:.0f} days ago - applicant pile is deep")
+    if refreshed and fresh > 5:
+        reasons.append(f"...but capped at +5: the requisition is ~{req_age:.0f} days old ({req_src}); "
+                       f"the date was refreshed by a repost")
+        fresh = 5
+        flags.append(f"reposted old req (~{req_age:.0f}d)")
+
+    # --- ghost-job risk. Weights follow evidence strength (see docs/GHOST_JOBS.md).
     ghost = 0.0
-    g_reasons = []
-    ev = _any(p.evergreen_phrases, low)
-    if ev:
-        ghost += 35; g_reasons.append("evergreen/pipeline language")
-    if age is not None and age > 60:
-        ghost += 20; g_reasons.append(f"open {age:.0f} days")
-    elif age is not None and age > 35:
-        ghost += 10; g_reasons.append(f"open {age:.0f} days")
-    if job.repost_count:
-        ghost += min(40, 15 * job.repost_count); g_reasons.append(f"reposted {job.repost_count}x")
-    if job.posted_at and job.first_seen and job.updated_at and (job.updated_at - job.posted_at).days > 45:
-        ghost += 5; g_reasons.append("repeatedly edited/refreshed")
+    g_reasons: list[str] = []
+
+    def add(points: float, why: str) -> None:
+        nonlocal ghost
+        ghost += points
+        g_reasons.append(f"{points:+g} {why}")
+
+    stripped = ctx.strip_boilerplate(job.description).lower() if ctx else low
+    cohort = re.search(r"cohort|rotational|development program|new grad|graduate program|early career program", low)
+    # hard markers: the posting says (or the ATS records) that there is no single open seat
+    if _any(p.pipeline_title, title) and not _any(p.pipeline_title_ok, title):
+        add(45, "title marks a pipeline / talent-community posting")
+    if job.extra.get("gh_prospect"):
+        add(40, "Greenhouse 'prospect post' - not attached to any requisition")
+    if job.source == "lever" and re.search(
+            r"general (inquiry|opportunit|application)|talent (community|pool)|^pipeline$|future (opportunit|consideration)",
+            job.department.lower()):
+        add(35, "Lever general-application team")
+    if _any(p.evergreen_phrases, stripped):
+        add(10 if cohort else 35, "job-specific evergreen/pipeline language" + (" (cohort program)" if cohort else ""))
+    if re.search(r"this posting is not for a current vacancy", low):
+        add(60, "states it is NOT for a current vacancy (NY ghost-job law wording)")
+    m = re.search(r"current vacancy,? and the employer intends to fill this position (by|no sooner than)\s+"
+                  r"([a-z]+\.? \d{1,2},? \d{4}|\d{1,2}/\d{1,2}/\d{2,4})", low)
+    if m and m.group(1) == "by":
+        d = parse_date_text(m.group(2))
+        if d and d.date() < now.date():
+            add(15, "fill-by date has passed but posting is still up")
+        elif d:
+            add(-15, "states a current vacancy with a fill-by date")
+    if re.search(r"(is )?not (for )?(an? )?(existing|current) vacancy", low) and \
+            not re.search(r"(existing|current) vacancy[^.]{0,80}new (position|role|headcount)", low):
+        add(25, "states it is not an existing vacancy")
+    elif re.search(r"\b(is|for) an existing vacancy|new position|new headcount|newly created (role|position)", low):
+        add(-5, "states an existing vacancy / new headcount")
+    if re.search(r"labor certification|application for permanent (labor|employment) certification|perm (recruitment|advertisement)", low):
+        add(40, "PERM labor-certification ad (role is earmarked for a sponsored worker)")
+        flags.append("PERM ad")
+    cf = {k.lower(): str(v) for k, v in (job.extra.get("custom") or {}).items()}
+    for k, v in cf.items():
+        if re.search(r"req type|project type|recruiting type", k) and re.search(r"sourcing|pipeline|evergreen|talent pool", v, re.I):
+            add(10 if re.search(r"intern|co-?op|new grad|graduate|apprentic", title) else 30,
+                f"ATS requisition type is '{v}'")
+        if (re.search(r"\btbh\b|to be hired|position (id|number)", k) and v.strip()) or \
+                (k == "business justification" and re.search(r"replacement|new budgeted", v, re.I)):
+            add(-8, "ATS shows a funded headcount / replacement")
+            break
+    ph = job.extra.get("phenom") or {}
+    if str(ph.get("isEverGreenReq", "")).lower() in ("yes", "1", "true") or ph.get("jobRequisitionType") == "Evergreen" \
+            or str(ph.get("justification", "")).lower().startswith("evergreen"):
+        add(30, "ATS marks this as an evergreen requisition")
+    elif re.search(r"replacement|additional hire \(budgeted\)|new position", f"{ph.get('newPosition', '')} {ph.get('justification', '')}", re.I):
+        add(-6, "ATS shows a budgeted/replacement headcount")
+    try:
+        if int(ph.get("numberOpenings") or ph.get("noOfAvailableOpenings") or 0) - int(ph.get("openingsFilled") or 0) <= 0 \
+                and ph.get("openingsFilled") not in (None, ""):
+            add(30, "all openings already filled")
+    except (TypeError, ValueError):
+        pass
+
+    # staleness of the requisition
+    if req_age is not None:
+        for limit, pts in ((180, 22), (120, 15), (90, 10), (60, 6)):
+            if req_age > limit:
+                add(pts, f"requisition open ~{req_age:.0f} days" + (f" ({req_src})" if req_src else ""))
+                break
+    if job.extra.get("relists"):
+        n = job.extra["relists"]
+        add(15 if n >= 2 else 10, f"re-listed {n}x after disappearing (seen in your history)")
+    sfx = job.extra.get("wd_suffix", 0) - (ctx.wd_suffix_baseline if ctx else 0)
+    if job.source == "workday" and sfx > 0:
+        add(min(12, 6 * sfx), f"Workday re-posting #{job.extra.get('wd_suffix')} (this employer's norm is {ctx.wd_suffix_baseline if ctx else 0})")
+
+    # deadlines stated in text (Workday's endDate is just an auto-expiry, so it's not used)
+    dl = deadline_in_text(low) or parse_date_text(str(job.extra.get("end_date") or "")) if job.source != "workday" \
+        else deadline_in_text(low)
+    if dl:
+        if dl.date() < now.date():
+            add(15, f"application deadline {dl:%b %d} has passed")
+        elif (dl - now).days <= 45:
+            add(-4, f"application window closes {dl:%b %d}")
+
+    # weaker, context-dependent signals
     if job.description and len(job.description) < 700:
-        ghost += 10; g_reasons.append("very thin description")
-    # signals that a real, time-boxed vacancy exists
-    if job.extra.get("end_date") or re.search(
-            r"(apply by|application (deadline|window)|posting (closes|will close|expected to close)|"
-            r"anticipate the application window)", low):
-        ghost -= 10; g_reasons.append("has an application deadline (good sign)")
-    if re.search(r"\b(backfill|immediate (need|opening|start)|current vacancy|intends? to fill)\b", low):
-        ghost -= 5; g_reasons.append("states a current vacancy (good sign)")
-    if re.search(r"\b(\d{2,}) locations\b|multiple locations", job.location, re.I) or job.location.count(" / ") >= 5:
-        ghost += 10; g_reasons.append("posted to many locations at once")
+        add(5, "very thin description")
+    many = re.search(r"\b(\d{2,}) locations\b", job.location, re.I) or job.location.count(" / ") >= 9
+    if many and not re.search(r"field|sales|territory|zone|region", title):
+        add(3, "same posting in 10+ locations")
+    if job.extra.get("restructuring_days") is not None:
+        d = job.extra["restructuring_days"]
+        add(5 if d <= 180 else 2, f"employer filed an SEC restructuring notice (8-K 2.05) {d} days ago")
+    if job.extra.get("freeze"):
+        add(5, "employer's open postings dropped 40%+ vs its 4-week norm (possible hiring freeze)")
 
     # --- pay
     lo, hi, pay_snip = parse_salary(f"{job.salary}\n{job.description}")
@@ -338,8 +468,8 @@ def score_job(job: Job, p: Profile, now: datetime | None = None) -> Job:
         else:
             fit += 5
             reasons.append(f"+5 pay posted: {pay_snip[:40]}")
-    elif states & PAY_TRANSPARENCY and job.description:
-        ghost += 5; g_reasons.append("no pay range despite pay-transparency law")
+    elif len(states) == 1 and states & PAY_TRANSPARENCY and job.description:
+        add(5, "no pay range despite pay-transparency law")
     contract = _any(p.contract_title, f"{job.employment_type}\n{job.title}".lower()) or _any(p.contract_phrases, low)
     if contract:
         flags.append("contract/temp")
@@ -348,16 +478,16 @@ def score_job(job: Job, p: Profile, now: datetime | None = None) -> Job:
             reasons.append(f"-{p.contract_penalty} contract/temp role")
 
     job.fit = round(fit, 1)
-    ghost = max(0.0, ghost)
+    ghost = min(100.0, max(0.0, ghost))
     job.ghost_risk = round(ghost, 1)
     if g_reasons:
-        reasons.append(f"-{ghost:.0f} ghost-risk: {', '.join(g_reasons)}")
+        reasons.append(f"ghost-risk {ghost:.0f}: " + "; ".join(g_reasons))
     job.score = round(fit + fresh - ghost, 1)
     job.reasons, job.flags = reasons, flags
 
     if job.ghost_risk >= 40:
         job.bucket = "likely ghost"
-    elif job.score >= p.apply_now_score and (age is None or age <= 7):
+    elif job.score >= p.apply_now_score and (post_age is None or post_age <= 7) and not refreshed:
         job.bucket = "apply now"
     elif job.score >= p.worth_it_score:
         job.bucket = "worth a shot"
