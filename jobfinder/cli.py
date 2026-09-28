@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from . import __version__
-from .config import DATA_DIR, REPORTS_DIR, load_companies, load_profile, save_companies
+from .config import DATA_DIR, REPORTS_DIR, add_company, load_companies, load_profile, save_companies
 from .http import get_text
 from .models import Company, Job
 from .report import print_summary, write_csv, write_html
@@ -28,7 +28,9 @@ def _console_utf8() -> None:
             pass
 
 
-def cmd_run(args) -> int:
+def cmd_run(args, progress=None) -> int:
+    """progress(done, total, postings, message) is called as employers finish (used by the app window)."""
+    progress = progress or (lambda *a: None)
     profile = load_profile()
     companies = load_companies()
     if args.segment:
@@ -46,6 +48,7 @@ def cmd_run(args) -> int:
                        max_age_days=profile.max_age_days + 15, cache=cache)
 
     print(f"Checking {len(companies)} employers...", flush=True)
+    progress(0, len(companies), 0, "Checking employers...")
     jobs: list[Job] = []
     errors: dict[str, str] = {}
     done = 0
@@ -59,6 +62,7 @@ def cmd_run(args) -> int:
                 jobs.extend(got)
             except Exception as e:  # one broken board must never kill the run
                 errors[c.name] = str(e)[:160]
+            progress(done, len(companies), len(jobs), f"Checked {c.name}")
             if done % 10 == 0 or done == len(companies):
                 print(f"  {done}/{len(companies)} employers, {len(jobs)} postings", flush=True)
     fetched = len(jobs)
@@ -70,6 +74,7 @@ def cmd_run(args) -> int:
         uniq.setdefault(j.uid, j)
     jobs = list(uniq.values())
 
+    progress(len(companies), len(companies), len(jobs), "Scoring jobs...")
     last = store.last_run()
     candidates = [j for j in jobs if title_matches(profile, j.title)]
     # company-level context (req-number sequences, boilerplate, suffix norms) from ALL postings
@@ -194,8 +199,7 @@ def cmd_add(args) -> int:
     except Exception as e:
         print(f"Detected {c.key} but fetching failed: {e}")
         return 1
-    companies.append(c)
-    save_companies(companies)
+    add_company(c)
     print(f"Added {c.name} via {c.ats} ({n} postings visible).")
     return 0
 
@@ -245,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         m.add_argument("note", nargs="*", help="optional note, e.g. 'referral from Sam'")
 
     sub.add_parser("tracker", help="list jobs you've marked applied")
+    sub.add_parser("gui", help="open the Job Finder app window")
 
     a = sub.add_parser("add", help="add an employer from a careers/job URL or company name")
     a.add_argument("target", help="careers page / job URL, or company name to guess")
@@ -258,5 +263,8 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
     if args.cmd is None:
         args = p.parse_args(["run", *(argv or sys.argv[1:])])
+    if args.cmd == "gui":
+        from .gui import main as gui_main
+        return gui_main([])
     return {"run": cmd_run, "applied": lambda a: _mark(a, "applied"), "hide": lambda a: _mark(a, "hidden"),
             "tracker": cmd_tracker, "add": cmd_add, "check": cmd_check}[args.cmd](args)

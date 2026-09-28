@@ -6,7 +6,7 @@ from jobfinder.models import Job
 from jobfinder.scoring import is_us, parse_salary, score_job, title_matches, years_required
 
 NOW = datetime(2026, 9, 25, tzinfo=timezone.utc)
-P = load_profile()
+P = load_profile(settings={})  # ignore any local app settings
 
 
 def job(title, desc="", loc="Atlanta, GA", days=1, source="greenhouse", **kw):

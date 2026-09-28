@@ -7,3 +7,8 @@ __pycache__/
 *.pyc
 .venv/
 .DS_Store
+config/settings.json
+config/my_companies.csv
+build/
+dist/
+*.spec

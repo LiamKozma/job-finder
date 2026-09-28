@@ -3,7 +3,7 @@
 # BS Biochemical Eng UGA '23, medtech R&D intern, bioprocess + DOE/QMS).
 # Every pattern is a case-insensitive Python regex. Edit freely.
 # ---------------------------------------------------------------------------
-name = "Fred Lee"
+name = ""   # set in the app window
 
 [titles]
 # Core roles his resume is a direct match for (+35)

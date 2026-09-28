@@ -1,5 +1,7 @@
 # Job Finder
 
+**➡️ [Download for Windows](https://github.com/LiamKozma/job-finder/releases/latest/download/JobFinder.exe)** · [How to use it](#get-started-on-windows-no-technical-skills-needed) · [How to turn applications into interviews](STRATEGY.md)
+
 Find engineering jobs that are **fresh, real, and a genuine fit**. Skip the reposted ghost listings
 and the postings that auto-reject you at 1:01 AM.
 
@@ -15,6 +17,26 @@ It uses no LinkedIn/Indeed scraping, no API keys, no accounts, and no third-part
 **New to this? Read [STRATEGY.md](STRATEGY.md).** It covers what's behind ghost jobs and 1 AM rejections, real pay
 data for entry-level roles, and a daily routine that turns postings into interviews.
 
+## Get started on Windows (no technical skills needed)
+
+1. **[Download JobFinder.exe](https://github.com/LiamKozma/job-finder/releases/latest/download/JobFinder.exe)**. Save it
+   somewhere easy, like your Desktop.
+2. **Double-click it.** Windows may show a blue box saying *"Windows protected your PC"*. That appears because the
+   app isn't from the Microsoft Store. Click **More info**, then **Run anyway**. You only need to do this once.
+3. In the window that opens, fill in **Your preferences** (lowest salary, preferred states, visa or clearance
+   situation) and click **Save preferences**.
+4. Click **Find jobs now**. It takes about 3 minutes. Your results open in your web browser when it's done.
+5. Tick **"Search for me automatically every day at 8:00"** and it runs every morning by itself.
+   If the laptop is asleep at 8, it runs as soon as it wakes up.
+
+That's it. Nothing else to install. To update, download the .exe again. Your settings and history are kept.
+
+<details><summary>Using it with Python instead (Mac/Linux, or developers)</summary>
+
+Install Python 3.11+, download this repo, then double-click `JobFinder.pyw`, or run `python3 -m jobfinder gui` for the
+window or `python3 -m jobfinder` for the command line. `./run.sh` / `run.bat` also work.
+</details>
+
 ## Why this exists
 
 Applying through big job boards means competing with hundreds of applicants, often for listings that
@@ -27,39 +49,18 @@ were never going to be filled. This tool does the opposite:
 | **Being applicant #800** | Jobs are pulled straight from the employer's own ATS, usually **hours** after posting. Postings from the last 24–72h get a big boost, because early applicants are far likelier to get a human review. |
 | **Lowball offers** (e.g. $20/hr on a 2-year contract ≈ $41.6k/yr) | Parses posted pay ranges and flags anything under your floor (`min_salary`, default $65k). Contract, temp and staffing-agency roles are flagged too. Most US states with big medtech hubs (CA, CO, WA, NY, IL, MN, MA, NJ, MD) legally require a pay range in the posting, so you'll see the pay *before* applying. |
 
-## Quick start (Windows)
-
-1. Install Python 3.11+ (one time). Open **PowerShell** and run:
-   ```powershell
-   winget install Python.Python.3.12
-   ```
-2. Download this repo: **Code → Download ZIP** on GitHub and unzip it (or `git clone` it).
-3. Double-click **`run.bat`**. The first run takes a few minutes, and then the report opens in your browser.
-4. *(Optional)* To run it automatically every morning at 8 AM, open PowerShell in the repo folder and run:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File scripts\schedule_windows.ps1
-   # or twice a day:  ... -Times 08:00,13:00      remove:  ... -Remove
-   ```
-   If the laptop is asleep at 8, the task runs as soon as it wakes up.
-
-**macOS / Linux:** `./run.sh`, and `sh scripts/schedule_mac.sh` for a daily 8 AM run.
-
 ## Daily routine (about 15 minutes)
 
-1. Open the report (it opens by itself if scheduled). Start with **Apply today**. Tick **new only** to
-   see just what appeared since yesterday.
-2. For each good one, check **"Why this score"**, open the posting and apply the same day.
-   Mirror the posting's keywords in your resume (the matched skills are listed for you).
-3. Tick **applied** in the report, and/or record it so it never shows again:
-   ```
-   py -m jobfinder applied 3fa9c1 "referral from Sam"
-   py -m jobfinder tracker            # everything you've applied to
-   py -m jobfinder hide 8b21de        # not interested
-   ```
-4. For the top 2–3 roles, find the hiring manager or a team engineer on LinkedIn and send a short note.
-   A referral or a direct message beats a cold application by a wide margin.
+1. Open your results. They open by themselves if you turned on the daily search, or click **Open last results** in the app.
+   Start with **Apply today**. Tick **new only** to see just what appeared since last time.
+2. For each good one, click **"Why this score"** to see which of your skills matched. Then open the posting and
+   apply the same day, using the posting's own words in your resume.
+3. Tick **applied** on the job. It moves to **My applications** at the top of the page, so you can track it and
+   follow up after about a week. Tick **hide** for jobs you're not interested in.
+4. For your top 2–3 jobs, find the hiring manager or a Georgia Tech / UGA alum on that team on LinkedIn and send a short
+   note. See [STRATEGY.md](STRATEGY.md) for a template. A referral or a direct message beats a cold application by a wide margin.
 
-## Commands
+## Command line (optional)
 
 ```
 py -m jobfinder                      # same as "run": fetch, score, open report
@@ -107,7 +108,8 @@ SEC restructuring notice in the past year. SEC requires a contact email on API r
 
 ## Privacy
 
-`data/` (your applied/hidden history) and `reports/` stay on your laptop and are git-ignored, and so are
+The app keeps your settings, history and results in `%LOCALAPPDATA%\JobFinder` on your own computer. In a repo
+checkout, `data/` (your applied/hidden history) and `reports/` stay on your laptop and are git-ignored, and so are
 PDFs, so a resume dropped in the folder won't be committed. The tool only makes read-only
 requests to public job-board endpoints.
 

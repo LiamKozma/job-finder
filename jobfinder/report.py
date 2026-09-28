@@ -87,7 +87,7 @@ def write_html(jobs: list[Job], path: Path, now: datetime, stats: dict) -> None:
             reasons = "".join(f"<li>{e(r)}</li>" for r in j.reasons)
             search = e(f"{j.company} {j.title} {j.location} {' '.join(j.flags)}".lower())
             cards.append(f"""
-<article class="card" data-id="{sid}" data-search="{search}">
+<article class="card" data-id="{sid}" data-search="{search}" data-title="{e(j.title)}" data-company="{e(j.company)}" data-url="{e(j.url)}">
   <div class="top">
     <div class="score" title="fit {j.fit} / ghost risk {j.ghost_risk}">{j.score:.0f}</div>
     <div class="main">
@@ -98,7 +98,6 @@ def write_html(jobs: list[Job], path: Path, now: datetime, stats: dict) -> None:
     <div class="acts">
       <label><input type="checkbox" class="applied"> applied</label>
       <label><input type="checkbox" class="hide"> hide</label>
-      <code class="sid" title="python -m jobfinder applied {sid}">{sid}</code>
     </div>
   </div>
   <details><summary>Why this score</summary><ul>{reasons}</ul></details>
@@ -151,7 +150,7 @@ details.bucket {{ margin:0; font-size:15px; color:var(--ink) }} details.bucket >
 .chip.new {{ background:var(--new); color:#fff; font-weight:700 }} .chip.pay {{ background:var(--pay) }}
 .flag {{ background:var(--flag); color:var(--flagink) }}
 .acts {{ display:flex; flex-direction:column; gap:2px; font-size:13px; color:var(--muted); white-space:nowrap }}
-.sid {{ font-size:12px }}
+#applied-list {{ margin:6px 0 0 18px; padding:0 }} #applied-list li {{ margin:3px 0 }} #applied-list a {{ color:var(--ink) }}
 details {{ margin-top:6px; font-size:13px; color:var(--muted) }} details ul {{ margin:4px 0 0 18px; padding:0 }}
 .errs {{ margin-top:8px }}
 @media (max-width:600px) {{ .top {{ flex-wrap:wrap }} .main {{ flex-basis:calc(100% - 60px) }} .bar label {{ font-size:13px }} .acts {{ flex-direction:row; gap:12px; width:100% }} }}
@@ -167,7 +166,12 @@ details {{ margin-top:6px; font-size:13px; color:var(--muted) }} details ul {{ m
   </div>
   {err_html}
 </header>
-<main>{''.join(sections) or '<p>No matching jobs. Try widening config/profile.toml.</p>'}</main>
+<main>
+<details class="bucket" id="applied-box" hidden><summary><h2>My applications <span class="count" id="applied-count"></span></h2></summary>
+  <p class="blurb">Everything you've ticked "applied" (saved in this browser). Follow up after about a week if you hear nothing.</p>
+  <ul id="applied-list"></ul>
+</details>
+{''.join(sections) or '<p>No matching jobs right now. Check back tomorrow, or lower your salary floor in the app.</p>'}</main>
 <script>
 const KEY = "jobfinder-marks";
 let marks = {{}};
@@ -180,8 +184,25 @@ document.querySelectorAll(".card").forEach(c => {{
   const paint = () => {{ c.classList.toggle("is-applied", a.checked); c.classList.toggle("is-hidden", h.checked); }};
   paint();
   [a, h].forEach(el => el.addEventListener("change", () => {{
-    marks[id] = {{ applied: a.checked, hide: h.checked, at: new Date().toISOString() }}; save(); paint(); }}));
+    marks[id] = {{ applied: a.checked, hide: h.checked, at: new Date().toISOString(),
+                  title: c.dataset.title, company: c.dataset.company, url: c.dataset.url }};
+    save(); paint(); renderApplied(); }}));
 }});
+function renderApplied() {{
+  const items = Object.values(marks).filter(m => m.applied && m.title).sort((x, y) => (y.at || "").localeCompare(x.at || ""));
+  const box = document.getElementById("applied-box");
+  box.hidden = !items.length;
+  document.getElementById("applied-count").textContent = items.length;
+  const ul = document.getElementById("applied-list");
+  ul.textContent = "";
+  items.forEach(m => {{
+    const li = document.createElement("li"), a = document.createElement("a");
+    a.href = m.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = m.title;
+    li.append((m.at || "").slice(0, 10) + "  ", a, "  — " + m.company);
+    ul.append(li);
+  }});
+}}
+renderApplied();
 const q = document.getElementById("q"), onlynew = document.getElementById("onlynew");
 function filter() {{
   const terms = q.value.toLowerCase().split(/\\s+/).filter(Boolean);

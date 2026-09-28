@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import csv
+import json
+import os
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,10 +14,53 @@ except ModuleNotFoundError:  # pragma: no cover
 
 from .models import Company
 
-ROOT = Path(__file__).resolve().parent.parent
+# Where the shipped defaults live (inside the .exe bundle, or the repo checkout)
+BUNDLE_DIR = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+DEFAULT_CONFIG_DIR = BUNDLE_DIR / "config"
+FROZEN = bool(getattr(sys, "frozen", False))
+# Where the user's settings/history/reports live. The .exe can't write next to itself
+# reliably, so it uses %LOCALAPPDATA%\JobFinder; a repo checkout uses the repo folder.
+if os.environ.get("JOBFINDER_HOME"):
+    ROOT = Path(os.environ["JOBFINDER_HOME"])
+elif FROZEN:
+    ROOT = Path(os.environ.get("LOCALAPPDATA") or Path.home() / ".local" / "share") / "JobFinder"
+else:
+    ROOT = BUNDLE_DIR
 CONFIG_DIR = ROOT / "config"
 DATA_DIR = ROOT / "data"
 REPORTS_DIR = ROOT / "reports"
+SETTINGS_PATH = CONFIG_DIR / "settings.json"
+
+# Plain-language settings the app window edits; they override profile.toml.
+DEFAULT_SETTINGS = {
+    "name": "",
+    "min_salary": None,          # None = use profile.toml
+    "preferred_states": None,
+    "contract_ok": False,
+    "needs_sponsorship": False,
+    "has_clearance": False,
+    "sec_contact_email": "",
+    "daily_time": "08:00",
+}
+SPONSORSHIP_KNOCKOUT = (
+    r"(unable|not able|not eligible|will not|won.?t|do(es)? not|cannot) (to )?(provide |offer )?(visa )?sponsor"
+    r"|without (the need for )?(current or future )?(employer |visa )?sponsorship"
+    r"|must be (a )?u\.?s\.? citizen|u\.?s\.? citizenship (is )?required",
+    "no visa sponsorship")
+
+
+def load_settings() -> dict:
+    out = dict(DEFAULT_SETTINGS)
+    try:
+        out.update(json.loads(SETTINGS_PATH.read_text(encoding="utf-8")))
+    except (OSError, ValueError):
+        pass
+    return out
+
+
+def save_settings(settings: dict) -> None:
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    SETTINGS_PATH.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
 
 @dataclass
@@ -47,11 +93,14 @@ class Profile:
     sec_contact: str = ""
 
 
-def load_profile(path: Path | None = None) -> Profile:
-    path = path or CONFIG_DIR / "profile.toml"
+def load_profile(path: Path | None = None, settings: dict | None = None) -> Profile:
+    if path is None:
+        path = CONFIG_DIR / "profile.toml"
+        if not path.exists():
+            path = DEFAULT_CONFIG_DIR / "profile.toml"
     raw = tomllib.loads(path.read_text(encoding="utf-8"))
     t, s, sc, f = raw.get("titles", {}), raw.get("signals", {}), raw.get("scoring", {}), raw.get("filters", {})
-    return Profile(
+    prof = Profile(
         name=raw.get("name", ""),
         title_primary=t.get("primary", []),
         title_secondary=t.get("secondary", []),
@@ -79,13 +128,34 @@ def load_profile(path: Path | None = None) -> Profile:
         max_age_days=f.get("max_age_days", 45),
         sec_contact=raw.get("sec", {}).get("contact_email", ""),
     )
+    return apply_settings(prof, load_settings() if settings is None else settings)
+
+
+def apply_settings(p: Profile, st: dict) -> Profile:
+    if st.get("name"):
+        p.name = st["name"]
+    if st.get("min_salary"):
+        p.min_salary = int(st["min_salary"])
+    if st.get("preferred_states") is not None:
+        p.preferred_states = [x.strip().upper() for x in st["preferred_states"] if x.strip()]
+    if st.get("contract_ok"):
+        p.contract_penalty = 0
+    if st.get("needs_sponsorship"):
+        p.knockouts = p.knockouts + [SPONSORSHIP_KNOCKOUT]
+    if st.get("has_clearance"):
+        p.knockouts = [k for k in p.knockouts if "clearance" not in k[1]]
+    if st.get("sec_contact_email"):
+        p.sec_contact = st["sec_contact_email"]
+    return p
 
 
 COMPANY_FIELDS = ["name", "ats", "slug", "host", "site", "segment", "hq", "ticker"]
 
 
-def load_companies(path: Path | None = None) -> list[Company]:
-    path = path or CONFIG_DIR / "companies.csv"
+MY_COMPANIES = CONFIG_DIR / "my_companies.csv"   # employers the user added (kept across app updates)
+
+
+def _read_companies(path: Path) -> list[Company]:
     out = []
     with path.open(newline="", encoding="utf-8") as fh:
         for row in csv.DictReader(fh):
@@ -95,8 +165,31 @@ def load_companies(path: Path | None = None) -> list[Company]:
     return out
 
 
+def load_companies(path: Path | None = None) -> list[Company]:
+    if path is not None:
+        return _read_companies(path)
+    base = CONFIG_DIR / "companies.csv"
+    if FROZEN or not base.exists():
+        base = DEFAULT_CONFIG_DIR / "companies.csv"   # the app always uses its latest built-in list
+    out = _read_companies(base)
+    if MY_COMPANIES.exists():
+        keys = {c.key for c in out}
+        out += [c for c in _read_companies(MY_COMPANIES) if c.key not in keys]
+    return out
+
+
+def add_company(c: Company) -> None:
+    """Persist a user-added employer (repo checkout: companies.csv; app: my_companies.csv)."""
+    if FROZEN:
+        existing = _read_companies(MY_COMPANIES) if MY_COMPANIES.exists() else []
+        save_companies(existing + [c], MY_COMPANIES)
+    else:
+        save_companies(load_companies() + [c])
+
+
 def save_companies(companies: list[Company], path: Path | None = None) -> None:
     path = path or CONFIG_DIR / "companies.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=COMPANY_FIELDS)
         w.writeheader()

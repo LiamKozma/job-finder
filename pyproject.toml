@@ -1,6 +1,6 @@
 [project]
 name = "jobfinder"
-version = "0.1.0"
+version = "0.2.0"
 description = "Find fresh, real, well-matched job postings from public ATS job-board APIs"
 requires-python = ">=3.11"
 dependencies = []
