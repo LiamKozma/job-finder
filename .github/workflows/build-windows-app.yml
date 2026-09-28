@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m unittest -v
+      - name: Test turning the daily search on and off (Task Scheduler)
+        run: python -c "from jobfinder import schedule as s; s.enable('08:00'); assert s.is_enabled(), 'not enabled'; import subprocess; print(subprocess.run(['schtasks','/Query','/TN',s.TASK,'/V','/FO','LIST'],capture_output=True,text=True).stdout[:1500]); s.disable(); assert not s.is_enabled(); print('schedule OK')"
       - run: python -m pip install "pyinstaller>=6,<7"
       - name: Build JobFinder.exe
         run: pyinstaller --noconfirm --onefile --windowed --name JobFinder --add-data "config;config" --collect-submodules jobfinder JobFinder.pyw
